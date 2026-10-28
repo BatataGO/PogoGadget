@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.10.2)
+project(pogogadget)
+add_library(pogogadget SHARED module.cpp)
+target_compile_options(pogogadget PRIVATE -Wall -Wextra -fno-exceptions -fno-rtti)
+target_compile_features(pogogadget PRIVATE cxx_std_17)
+target_include_directories(pogogadget PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/zygisk)
+target_link_libraries(pogogadget log dl)
