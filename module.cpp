@@ -21,6 +21,11 @@ public:
     void onLoad(Api *api, JNIEnv *env) override {
         this->api = api;
         this->env = env;
+        // جلب واصف الملف (FD) هنا (داخل onLoad حيث نملك صلاحيات الروت) وحفظه
+        this->module_dir_fd = api->getModuleDir();
+        if (this->module_dir_fd < 0) {
+            LOGE("Failed to get module directory FD in onLoad");
+        }
     }
 
     void preAppSpecialize(AppSpecializeArgs *args) override {
@@ -35,23 +40,14 @@ public:
         LOGD("Injected into Pokemon GO, loading Gadget...");
         
         int fd = -1;
-        int dir_fd = api->getModuleDir();
         
-        if (dir_fd >= 0) {
-            fd = openat(dir_fd, "libgadget.so", O_RDONLY | O_CLOEXEC);
-            close(dir_fd);
-        }
-        
-        // خطة بديلة 1: فتح المسار المباشر
-        if (fd < 0) {
-            LOGD("getModuleDir failed, trying absolute path...");
+        // استخدام واصف الملف الذي حصلنا عليه في onLoad
+        if (module_dir_fd >= 0) {
+            fd = openat(module_dir_fd, "libgadget.so", O_RDONLY | O_CLOEXEC);
+        } else {
+            // خطة بديلة في حال فشل getModuleDir
+            LOGD("module_dir_fd is invalid, trying absolute path...");
             fd = open("/data/adb/modules/pogogadget/libgadget.so", O_RDONLY | O_CLOEXEC);
-        }
-
-        // خطة بديلة 2: مسار آخر محتمل
-        if (fd < 0) {
-            LOGD("Absolute path failed, trying module path...");
-            fd = open("/data/adb/modules/pogogadget/zygisk/libgadget.so", O_RDONLY | O_CLOEXEC);
         }
 
         if (fd < 0) {
@@ -75,6 +71,7 @@ public:
 private:
     Api *api;
     JNIEnv *env;
+    int module_dir_fd = -1;
 };
 
 REGISTER_ZYGISK_MODULE(GadgetModule)
