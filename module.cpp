@@ -6,6 +6,7 @@
 #include <android/log.h>
 #include <limits.h>
 #include <stdio.h>
+#include <cstring>
 #include "zygisk.hpp"
 
 using zygisk::Api;
@@ -21,15 +22,26 @@ public:
         this->env = env;
     }
 
+    // 1. فلترة التطبيقات: نعمل فقط على لعبة بوكيمون جو
+    void preAppSpecialize(AppSpecializeArgs *args) override {
+        auto nice_name = env->GetStringUTFChars(args->nice_name, nullptr);
+        if (strcmp(nice_name, "com.nianticlabs.pokemongo") != 0) {
+            // إذا لم يكن التطبيق هو اللعبة، قم بإغلاق الوحدة لهذا التطبيق
+            api->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+        }
+        env->ReleaseStringUTFChars(args->nice_name, nice_name);
+    }
+
+    // 2. حقن المكتبة داخل اللعبة
     void postAppSpecialize(const AppSpecializeArgs *args) override {
-        // 1. الحصول على واصف الملف (FD) لمجلد الوحدة (يتجاوز قيود SELinux)
+        LOGD("Injected into Pokemon GO, loading Gadget...");
+        
         int dir_fd = api->getModuleDir();
         if (dir_fd < 0) {
             LOGE("Failed to get module directory FD");
             return;
         }
 
-        // 2. فتح المكتبة باستخدام openat
         int fd = openat(dir_fd, "libgadget.so", O_RDONLY | O_CLOEXEC);
         if (fd < 0) {
             LOGE("Failed to open libgadget.so");
@@ -37,11 +49,9 @@ public:
             return;
         }
 
-        // 3. استخدام مسار /proc/self/fd لتجاوز قيود المسار
         char path[PATH_MAX];
         snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
 
-        // 4. تحميل المكتبة في الذاكرة
         void *handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
         if (!handle) {
             LOGE("dlopen failed: %s", dlerror());
@@ -49,7 +59,6 @@ public:
             LOGD("Successfully loaded libgadget.so");
         }
         
-        // إغلاق الواصفات
         close(fd);
         close(dir_fd);
     }
